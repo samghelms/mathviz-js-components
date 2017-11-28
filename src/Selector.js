@@ -37,8 +37,6 @@ class Selector extends React.Component {
   }
 
   render () {
-    console.log("rendered selector")
-    console.log(this.props)
     return (
       <Select
           style = {{height:60} }

@@ -8,6 +8,8 @@ const cell_style={
 
 const TableWrap = ({data, columns}) => {
 	console.log("rendered table")
+	console.log(data)
+	console.log(columns)
 	return (
 		<div>
 			<ReactTable

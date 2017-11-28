@@ -3,6 +3,7 @@ import logo from './logo.svg';
 import './App.css';
 import TableWrap from './Table'
 import Selector from './Selector'
+import SelectorOptions from './SelectorOptions'
 import {formatMath, get_path} from './helpers'
 import Trie from './Trie'
 
@@ -10,11 +11,12 @@ class App extends Component {
 
   constructor(props) {
     super(props)
-    this.state = {suggestions: []}
+    this.state = {suggestions: [], isFetchingSettings: true}
     this.getNeighbors=this.getNeighbors.bind(this)
     this.query=this.query.bind(this)
     this.getSettings=this.getSettings.bind(this)
     this.getSuggestions=this.getSuggestions.bind(this)
+    this.formatTableObj=this.formatTableObj.bind(this)
     this.searchEngine = null
     this.searchIndex = null
     this.docs = null
@@ -33,7 +35,7 @@ class App extends Component {
     this.trie = new Trie(settings.docs)
     console.log("=========trie===========")
 
-    this.setState({columns: settings.columns})
+    this.setState({columns: settings.columns, isFetchingSettings: false})
 
   }
 
@@ -54,6 +56,22 @@ class App extends Component {
     console.log("updated")
   }
 
+  formatTableObj(el) {
+    var ret_obj = {}
+    const keys = Object.keys(el)
+    for (var i = 0; i < keys.length; i++) {
+      let col = keys[i]
+      if(el[col].fmt) {
+        if (el[col].fmt == "math") {
+          ret_obj[col] = formatMath(el[col].data)
+        }
+      } else {
+        ret_obj[col] = el[col].data
+      }
+    }
+    return ret_obj
+  }
+
   async getNeighbors(query) {
 
     // fetch from local host
@@ -61,19 +79,19 @@ class App extends Component {
                               {method: 'POST', body: JSON.stringify({"query": query} )} )
                               .then(response => response.json() )
                               .then(json => json)
-
-    const processed = json.neighbors.map(el => ({"word": formatMath(el.neighbor), 
-                                                  "sim": el.similarity_score })
+    console.log(json)
+    const processed = json.neighbors.map(el => this.formatTableObj(el)
                                         )
     this.setState({neighbors: processed})
   }
 
   query(query) {
+    console.log("querying")
     this.getNeighbors ( query )
   }
 
   async getSuggestions(input) {
-    if(input.length < 3) {
+    if(input.length < 3 || this.state.isFetchingSettings) {
       return
     }
    const cands = this.trie.autocomplete(input, 20)
