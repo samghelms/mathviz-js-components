@@ -38,7 +38,7 @@ class Selector extends React.Component {
 
   render () {
     return (
-      <Select
+      <Select.Creatable
           style = {{height:60} }
           onChange={this.onChange}
           options={this.props.options}
