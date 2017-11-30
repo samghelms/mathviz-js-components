@@ -26,7 +26,7 @@ class App extends Component {
     // fetch from local host
     console.log("=========settings===========")
 
-    const settings = await fetch(`http://localhost:8081/settings`, {method: "GET"})
+    const settings = await fetch(window.SERVER_ADDRESS+`/settings`, {method: "GET"})
                           .then(response => response.json())
                           .then(json => json)
     console.log(settings)
@@ -75,7 +75,7 @@ class App extends Component {
   async getNeighbors(query) {
 
     // fetch from local host
-    const json = await fetch(`http://localhost:8081/query`,
+    const json = await fetch(window.SERVER_ADDRESS+`/query`,
                               {method: 'POST', body: JSON.stringify({"query": query} )} )
                               .then(response => response.json() )
                               .then(json => json)
