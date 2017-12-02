@@ -1,7 +1,9 @@
 import './CSS3DRenderer'
+import './threeoctree.min.js'
 import {formatMath} from './helpers'
 import {generateIndexedPointcloud} from './generate_point_clouds'
-
+import formula_list from './data/formula_list.json'
+import sprite from './data/sprites/disc.png';
 
 const Stats = require(`stats.min.js`) 
 const THREE = require(`three.min.js`) 
@@ -40,22 +42,32 @@ function raw_points_buffer(radius, width, height, n) {
 }
 
 var table = [
-  "\\int_5^5 x", 0, 0, 
-  "x = 5 + 7", 0, 0,
-  "100 * \\frac{5}{6}", 0, 0,
-  "\\gamma + \\phi = 5 ", 0, 0
+  "\\int_5^5 x",
+  "x = 5 + 7", 
+  "100 * \\frac{5}{6}", 
+  "\\gamma + \\phi = 5 ", 
+  "\\gamma + \\phi = 5 ", 
+
 ];
 
 
 export class Visualization {
   constructor(domEl) {
 
-    this.table = table
+    this.table = formula_list
     this.mathct = 0
     this.oldMath, this.old_index
     this.raw_points
     this.particles
     this.PARTICLE_SIZE = 200
+    this.octree = new THREE.Octree(
+                                  {
+                                    objectsThreshold: 1,
+                                  }
+                                  )
+    this.sprite = new THREE.TextureLoader().load( sprite );
+    this.active_indices = []
+    this.mathObjs = {}
 
     this.container = domEl
     this.camera, this.scene, this.renderer, this.zoom
@@ -78,12 +90,12 @@ export class Visualization {
     this.init = this.init.bind(this)
     this.animate = this.animate.bind(this)
     this.fetchData = this.fetchData.bind(this)
-    this.drawData = this.drawData.bind(this)
     this.setupZoom = this.setupZoom.bind(this)
     this.render = this.render.bind(this)
     this.onDocumentMouseMove = this.onDocumentMouseMove.bind(this)
-    this.get_math = this.get_math.bind(this)
+    this.add_math = this.add_math.bind(this)
     this.drawBufferData = this.drawBufferData.bind(this)
+    this.removeInactiveMath = this.removeInactiveMath.bind(this)
 
     this.init()
     this.animate()
@@ -130,7 +142,6 @@ export class Visualization {
 
       this.fetchData()
       this.setupZoom()
-      this.get_math()
 
       const view = d3.select(this.renderer_css.domElement);
       view.call(this.zoom);
@@ -160,53 +171,32 @@ export class Visualization {
  
     }
 
-    get_math() {
-      for ( var i = 0; i < this.table.length; i += 3 ) {
-        var element = document.createElement( 'div' );
-        //
-        formatMath(this.table[i], element)
-        element.className = 'element';
-        var object = new THREE.CSS3DObject( element );
-        object.position.x = ( this.table[ i + 1 ]  ) ;
-        object.position.y = - ( this.table[ i + 2 ] ) ;
-        object.position.z = 0 ;
-        // this.scene_css.add( object );
-        this.maths.push(object)
-
+    add_math(math_id_dev, real_id, x, y) {
+      // Don't need to re render things we already have
+      if (this.active_indices.includes(real_id) ) {
+        console.log("already have this")
+        return
       }
+      var element = document.createElement( 'div' );
+      //
+      formatMath(this.table[math_id_dev], element)
+      element.className = 'element';
+      var object = new THREE.CSS3DObject( element );
+      object.position.x = x
+      object.position.y = y
+      object.position.z = 0 ;
+      object.scale.set( 0.005, 0.005, 0.005 );  
+      this.scene_css.add( object );
+      this.mathObjs[real_id] = object
+      
     }
 
-    drawData(raw_points) {
-      this.pointsGeometry = new THREE.Geometry();
-      const colors = [];
-
-      /*
-      TODO: make sure the for ... of loop isn't slow
-      */
-      for (const point of raw_points) {
-        const vertex = new THREE.Vector3(point.coords[0], point.coords[1], 0);
-        this.pointsGeometry.vertices.push(vertex);
-        const color = new THREE.Color();
-        color.setHSL(Math.random(), 1.0, 0.5);
-        colors.push(color);
+    removeInactiveMath(oldMath, newMath) {
+      let removeMath = oldMath.filter(x => !newMath.includes(x))
+      for (let i of removeMath) {
+        this.scene_css.remove(this.mathObjs[i])
+        this.mathObjs[i] = null
       }
-
-      this.pointsGeometry.colors = colors;
-
-      this.pointsMaterial = new THREE.PointsMaterial({
-        // map: spriteMap,
-        size: 6,
-        // transparent: true,
-        // blending: THREE.AdditiveBlending,
-        sizeAttenuation: false,
-        vertexColors: THREE.VertexColors,
-      });
-
-      this.points = new THREE.Points(this.pointsGeometry, this.pointsMaterial);
-      // this.points.scale.set( 10,10,10 );
-      // this.points.position.set( 5,0,-5 );
-      // const pointsContainer = new THREE.Object3D();
-      // pointsContainer.add(this.points);
     }
 
     drawBufferData() {
@@ -220,12 +210,14 @@ export class Visualization {
         var color = new THREE.Color();
 
         this.test_index = []
-
+        var k = 0
         for ( var i = 0; i < this.raw_points.length; i+=3 ) {
           colors[ i ] = 0
           colors[ i + 1 ] = 0
           colors[ i + 2 ] = 0
           this.test_index.push([this.raw_points[i], this.raw_points[i+1], this.raw_points[i+2]])
+          this.octree.add( {x: this.raw_points[i], y: this.raw_points[i+1], z: this.raw_points[i+2], radius: 0.1, id: k })
+          k++
         }
 
         for ( var i = 0; i < n; i++) {
@@ -237,8 +229,9 @@ export class Visualization {
         geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
         geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
         //
-        this.pointsMaterial = new THREE.PointsMaterial( { vertexColors: THREE.VertexColors } );
-        //
+        this.pointsMaterial = new THREE.PointsMaterial( { size: 0.5, map: this.sprite, alphaTest: 0.5, transparent: true } );
+        this.pointsMaterial.color.setHSL( 1.0, 0.3, 0.1 );
+        
         this.particles = new THREE.Points( geometry, this.pointsMaterial );
 
         this.scene.add( this.particles );
@@ -325,33 +318,26 @@ export class Visualization {
       // var new_closest = intersections[0] ? intersections[0].object.geometry.uuid : null
       if (intersections.length > 1) {
         // this.closest = new_closest.object.geometry.uuid
-        console.log(intersections)
-        console.log(this.test_index[intersections[0].index])
         // console.log(intersections[0].object.id)
         // console.log(this.closest)
         // console.log(intersections[0])
-        if (intersections[0].index !== this.old_index ) {
-          this.old_index = intersections[0].index
-          console.log(this.test_index[this.old_index])
-          var id = this.test_index[this.old_index]
-          var newMath = this.maths[0]
-          console.log(intersections[0].point)
-          newMath.position.copy( {x: id[0], y: id[1], z: id[2]} );
-          newMath.scale.set( 0.01, 0.01, 0.01 );  
-          this.scene_css.add(newMath)
 
-          // for(var i = 0; i < intersections.length && i < this.maths.length; i++) {
-          //   var newMath = this.maths[i]
-          //   // console.log(intersections[i].point)
-          //   newMath.position.copy( intersections[i].point );
-          //   newMath.scale.set( 0.01, 0.01, 0.01 );  
-          //   console.log(newMath.position)
+        var closest_id = this.test_index[intersections[0].index]
+        // var newMath = this.maths[0]
+        // newMath.position.copy( {x: id[0], y: id[1], z: id[2]} );
+        const nneighbors = this.octree.search( {x: closest_id[0], y: closest_id[1], z: closest_id[2]}, 2 ) 
+        
+        let new_active_indices = []
+        for(var i = 0; i < nneighbors.length && i < this.table.length; i++) {
+          var id = this.test_index[nneighbors[i].object.id]
 
-          //   this.scene_css.add(newMath)
-          // } 
+          this.add_math(i, nneighbors[i].object.id, id[0], id[1])
 
-          // if(this.oldMath) this.scene_css.remove(this.oldMath)
-        }
+          new_active_indices.push(nneighbors[i].object.id)
+                  
+        } 
+        this.removeInactiveMath(this.active_indices, new_active_indices)
+        this.active_indices = new_active_indices
 
       }
       this.renderer.render(this.scene, this.camera);
@@ -362,5 +348,6 @@ export class Visualization {
       requestAnimationFrame(this.animate);
       this.render()
       this.stats.update();
+      this.octree.update()
     }
 }

@@ -2,6 +2,7 @@ import React from 'react';
 // import katex from './katex'
 const katex = require(`katex.js`)
 export const formatMath = (text, node) => {
+  // console.log(text)
   try {
   	  // console.log(katex)
       katex.render(text, node, { throwOnError: false, falsetrackLocation: true})
