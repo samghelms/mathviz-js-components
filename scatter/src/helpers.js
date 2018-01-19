@@ -20,3 +20,17 @@ export const get_path = (asset) => {
 	const parent_path = window.location.href.replace(/\/[^\/]{0,}$/, "")
     return `${parent_path+process.env.PUBLIC_URL.substr(1)+"/"+asset}`
 }
+
+export const mathFormatter = (text) => {
+  // console.log(text)
+  var node = document.createElement( 'div' );
+  try {
+      // console.log(katex)
+      katex.render(text, node, { throwOnError: false, falsetrackLocation: true})
+  }
+  catch(err) {
+    node.innerHTML = text
+  }
+  node.style.color = "red"
+  return node
+}

@@ -5,27 +5,11 @@ import {generateIndexedPointcloud} from './generate_point_clouds'
 import formula_list from './data/formula_list.json'
 import sprite from './data/sprites/disc.png';
 
+import tsne_embeddings from './data/tnse_embeddings_dev.json'
+
 const Stats = require(`stats.min.js`) 
 const THREE = require(`three.min.js`) 
 const d3 = require(`d3.v4.min.js`)
-
-// Point generator function
-function phyllotaxis(radius, width, height) {
-  const theta = Math.PI * (3 - Math.sqrt(5));
-  var i = 0
-  var pts = []
-  while (i < 10000) {
-    const r = radius * Math.sqrt(i), a = theta * i;
-    pts.push(
-    {coords: [
-      width / 2 + r * Math.cos(a) - width / 2,
-      height / 2 + r * Math.sin(a) - height / 2
-      ]
-    })
-    i+=1
-  };
-  return pts
-}
 
 // Point generator function
 function raw_points_buffer(radius, width, height, n) {
@@ -41,25 +25,26 @@ function raw_points_buffer(radius, width, height, n) {
   return pts
 }
 
-var table = [
-  "\\int_5^5 x",
-  "x = 5 + 7", 
-  "100 * \\frac{5}{6}", 
-  "\\gamma + \\phi = 5 ", 
-  "\\gamma + \\phi = 5 ", 
-
-];
-
 
 export class Visualization {
   constructor(domEl) {
+
+    this.tsne_data = tsne_embeddings
 
     this.table = formula_list
     this.mathct = 0
     this.oldMath, this.old_index
     this.raw_points
     this.particles
-    this.PARTICLE_SIZE = 200
+    this.default_point_size = 0.5
+    this.max_intersections = 20
+    this.mathScale = 0.01
+    this.center = {x:0.0, y:0.0}
+
+    this.zoomed_height
+    this.zoomed_width
+
+    this.search_radius = 80
     this.octree = new THREE.Octree(
                                   {
                                     objectsThreshold: 1,
@@ -68,6 +53,7 @@ export class Visualization {
     this.sprite = new THREE.TextureLoader().load( sprite );
     this.active_indices = []
     this.mathObjs = {}
+    this.id2word = {}
 
     this.container = domEl
     this.camera, this.scene, this.renderer, this.zoom
@@ -81,8 +67,8 @@ export class Visualization {
 
     this.stats
 
-    this.near_plane = 2
-    this.far_plane = 100
+    this.near_plane = .1
+    this.far_plane = 50
     this.maths = []
 
     this.points, this.pointsMaterial
@@ -93,54 +79,20 @@ export class Visualization {
     this.setupZoom = this.setupZoom.bind(this)
     this.render = this.render.bind(this)
     this.onDocumentMouseMove = this.onDocumentMouseMove.bind(this)
-    this.add_math = this.add_math.bind(this)
-    this.drawBufferData = this.drawBufferData.bind(this)
+    this.addMath = this.addMath.bind(this)
+    this.drawBufferDataTsne = this.drawBufferDataTsne.bind(this)
     this.removeInactiveMath = this.removeInactiveMath.bind(this)
+    this.getIntersections = this.getIntersections.bind(this)
+    this.findIntersections = this.findIntersections.bind(this)
+    this.computeBoundingBox = this.computeBoundingBox.bind(this)
 
     this.init()
     this.animate()
     }
 
     init() {
-      // Add canvas
-      this.renderer = new THREE.WebGLRenderer();
-      this.renderer.setSize(this.width, this.height);
-
-      this.renderer_css = new THREE.CSS3DRenderer();
-      this.renderer_css.setSize(this.width, this.height);
-      this.renderer_css.domElement.style.position = 'absolute';
-
-      //append
-      this.container.appendChild( this.renderer_css.domElement );
-      this.container.appendChild(this.renderer.domElement);
-
-      // Add raycaster
-      this.raycaster = new THREE.Raycaster();
-
-      // Add stats box
-      this.stats = new Stats();
-      this.stats.dom.style.position = 'absolute';
-      this.stats.dom.style.top = '0px';
-      this.stats.dom.style.right = '0px'
-      this.container.appendChild(this.stats.dom);
-
-      // Set up camera and scene
-      this.camera = new THREE.PerspectiveCamera(
-        100,
-        this.width / this.height,
-        this.near_plane,
-        this.far_plane 
-      );
-
-      this.camera.position.set(0, 0, this.far_plane);
-      this.camera.lookAt(new THREE.Vector3(0,0,0));
-
-      this.scene = new THREE.Scene();
-      this.scene.background = new THREE.Color( 0xf0f0f0 );
-
-      this.scene_css = new THREE.Scene();
-
-      this.fetchData()
+      this.initBaseScatter()
+      
       this.setupZoom()
 
       const view = d3.select(this.renderer_css.domElement);
@@ -155,39 +107,31 @@ export class Visualization {
     }
 
     fetchData() {
-      // let raw_points = await fetch('//fastforwardlabs.github.io/visualization_assets/word2vec_tsne_2d.json')
-      // .then(response => response.json())
-      this.raw_points = phyllotaxis(0.5, this.width, this.height)
-      // let obj = generateIndexedPointcloud( new THREE.Color( 0,1,0 ), 100, 100, 6 );
-      // points.scale.set( 10,10,10 );
-      // points.position.set( 5,0,5 );
-      // this.points = obj.pointcloud
-      // console.log(this.points)
-      // this.pointsMaterial = obj.material
-      this.scene.add(this.points)
-      // this.drawData(this.raw_points)
-      this.drawBufferData()
-      this.scene.add(this.points);
+      
+      this.drawBufferDataTsne()
  
     }
 
-    add_math(math_id_dev, real_id, x, y) {
+    addMath(math, id, x, y) {
       // Don't need to re render things we already have
-      if (this.active_indices.includes(real_id) ) {
-        console.log("already have this")
+      if (this.active_indices.includes(id) ) {
         return
       }
+      console.log("madeit")
       var element = document.createElement( 'div' );
       //
-      formatMath(this.table[math_id_dev], element)
+      formatMath(math.tex, element)
       element.className = 'element';
       var object = new THREE.CSS3DObject( element );
       object.position.x = x
       object.position.y = y
       object.position.z = 0 ;
-      object.scale.set( 0.005, 0.005, 0.005 );  
+      console.log(this.mathScale)
+      const scale = this.mathScale * this.camera.z
+      console.log(this.camera.z)
+      object.scale.set( scale, scale, scale );  
       this.scene_css.add( object );
-      this.mathObjs[real_id] = object
+      this.mathObjs[id] = object
       
     }
 
@@ -199,37 +143,37 @@ export class Visualization {
       }
     }
 
-    drawBufferData() {
-        const n = 1000
-        this.raw_points = raw_points_buffer(0.5, this.width, this.height, n)
+    drawBufferDataTsne() {
+        const keys = Object.keys(this.tsne_data)
 
-        var positions = new Float32Array( this.raw_points.length );
-        var colors = new Float32Array( this.raw_points.length );
-        var index = new Uint16Array( n );
-        var vertex;
+        var pts = new Float32Array( keys.length * 3 );
+        var index = new Uint16Array( keys.length );
         var color = new THREE.Color();
 
-        this.test_index = []
-        var k = 0
-        for ( var i = 0; i < this.raw_points.length; i+=3 ) {
-          colors[ i ] = 0
-          colors[ i + 1 ] = 0
-          colors[ i + 2 ] = 0
-          this.test_index.push([this.raw_points[i], this.raw_points[i+1], this.raw_points[i+2]])
-          this.octree.add( {x: this.raw_points[i], y: this.raw_points[i+1], z: this.raw_points[i+2], radius: 0.1, id: k })
-          k++
-        }
+        this.points_index = []
 
-        for ( var i = 0; i < n; i++) {
-          index[i] = i
+        var i = 0
+        var j = 0
+        for (let k of keys) {
+          let x = parseFloat(this.tsne_data[k].x)
+          let y = parseFloat(this.tsne_data[k].y)
+          let ind = parseInt(k)
+          pts[i] = x
+          pts[i+1] = y
+          pts[i+2] = 0
+          index[j] = j
+
+          this.id2word[j] = {key: k, x: x, y: y}
+          this.octree.add( {x: x, y: y, z: 0, radius: 0.1, id: j })
+
+          i+=3, j+=1
         }
 
         var geometry = new THREE.BufferGeometry();
-        geometry.addAttribute( 'position', new THREE.BufferAttribute( this.raw_points, 3 ) );
-        geometry.addAttribute( 'color', new THREE.BufferAttribute( colors, 3 ) );
+        geometry.addAttribute( 'position', new THREE.BufferAttribute( pts, 3 ) );
         geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
         //
-        this.pointsMaterial = new THREE.PointsMaterial( { size: 0.5, map: this.sprite, alphaTest: 0.5, transparent: true } );
+        this.pointsMaterial = new THREE.PointsMaterial( { size: this.default_point_size, map: this.sprite, transparent: true } );
         this.pointsMaterial.color.setHSL( 1.0, 0.3, 0.1 );
         
         this.particles = new THREE.Points( geometry, this.pointsMaterial );
@@ -237,8 +181,21 @@ export class Visualization {
         this.scene.add( this.particles );
     }
 
+    computeBoundingBox() {
+      /*
+      Computes the bounding box of the points currently displayed.
+      Also updates the search radius
+      */
+      const vFOV = this.camera.fov * Math.PI / 180
+      this.zoomed_height = 2 * Math.tan( vFOV / 2 ) * this.camera.position.z
+      // assuming we have a square view
+      this.zoomed_width = this.zoomed_height
+      this.search_radius = this.zoomed_height / 2
+    }
+
     setupZoom() {
       const outer_this = this
+
       this.zoom = d3.zoom()
       .scaleExtent([outer_this.near_plane, outer_this.far_plane])
       .wheelDelta(function wheelDelta() {
@@ -270,15 +227,17 @@ export class Visualization {
             const dir = vector.sub(outer_this.camera.position).normalize();
             const distance = (new_z - outer_this.camera.position.z)/dir.z;
             const pos = outer_this.camera.position.clone().add(dir.multiplyScalar(distance));
-            
+
+            this.center = {x: pos.x, y: pos.y}
+
             let scale
             
-            // if (outer_this.camera.position.z < 20) {
-            //   scale = (20 -  outer_this.camera.position.z)/outer_this.camera.position.z;
-            //   outer_this.pointsMaterial.setValues({size: 6 + 3 * scale});
-            // } else if (outer_this.camera.position.z >= 20 && outer_this.pointsMaterial.size !== 6) {
-            //   outer_this.pointsMaterial.setValues({size: 6});
-            // }
+            if (outer_this.camera.position.z < this.far_plane) {
+              scale = (outer_this.camera.position.z)/this.far_plane*(1+2*(this.far_plane- (outer_this.camera.position.z))/this.far_plane);
+              outer_this.pointsMaterial.setValues({size: outer_this.default_point_size*scale});
+            } else if (outer_this.camera.position.z >= this.far_plane && outer_this.pointsMaterial.size !== outer_this.default_point_size) {
+              outer_this.pointsMaterial.setValues({size: outer_this.default_point_size});
+            }
                             
             // Set the camera to new coordinates
             outer_this.camera.position.set(pos.x, pos.y, new_z);
@@ -298,6 +257,56 @@ export class Visualization {
 
     }
 
+    getIntersections() {
+      /*
+      gets intersections and performs thinning on the intersections if needed
+      */
+      this.raycaster.setFromCamera( this.mouse, this.camera );
+      const intersections = this.raycaster.intersectObject( this.particles );
+      const closest = {x: this.center.x, y: this.center.y} 
+      console.log(closest)
+      console.log(intersections)
+
+      let neighbors = this.octree.search( {x: closest.x, y: closest.y, z: 0}, this.search_radius )
+      if ( neighbors.length <= this.max_intersections ) {
+        neighbors = neighbors
+      } else {
+        let inc = this.zoomed_height/8.0
+        neighbors = []
+        let sample = []
+        let results
+        for (let x = closest.x - this.zoomed_height/2, y = closest.x - this.zoomed_height/2; x < this.zoomed_height/2; x+=inc, y+=inc) {
+          results = this.octree.search( {x: x, y: y, z: 0}, 10 ) 
+          neighbors.push(results[0])
+        }
+      }
+      return neighbors
+    }
+
+    findIntersections() {
+      let intersections = this.getIntersections()
+
+      if (intersections.length > 1) {
+        let new_active_indices = []
+        let word
+        let real_id
+
+        for(var i = 0; i < intersections.length; i++) {
+          real_id = intersections[i] ? intersections[i].object.id: null
+          
+          if (real_id) {
+            word = this.id2word[real_id]
+            this.addMath( this.tsne_data[ word.key ], real_id, word.x, word.y )
+            new_active_indices.push(real_id)
+          }
+                  
+        } 
+        this.removeInactiveMath(this.active_indices, new_active_indices)
+        this.active_indices = new_active_indices
+
+      }
+    }
+
     onDocumentMouseMove( event ) {
       event.preventDefault();
       this.mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
@@ -312,34 +321,6 @@ export class Visualization {
     }
 
     render() {
-      this.raycaster.setFromCamera( this.mouse, this.camera );
-      var intersections = this.raycaster.intersectObject( this.particles );
-      // console.log(this.particles)
-      // var new_closest = intersections[0] ? intersections[0].object.geometry.uuid : null
-      if (intersections.length > 1) {
-        // this.closest = new_closest.object.geometry.uuid
-        // console.log(intersections[0].object.id)
-        // console.log(this.closest)
-        // console.log(intersections[0])
-
-        var closest_id = this.test_index[intersections[0].index]
-        // var newMath = this.maths[0]
-        // newMath.position.copy( {x: id[0], y: id[1], z: id[2]} );
-        const nneighbors = this.octree.search( {x: closest_id[0], y: closest_id[1], z: closest_id[2]}, 2 ) 
-        
-        let new_active_indices = []
-        for(var i = 0; i < nneighbors.length && i < this.table.length; i++) {
-          var id = this.test_index[nneighbors[i].object.id]
-
-          this.add_math(i, nneighbors[i].object.id, id[0], id[1])
-
-          new_active_indices.push(nneighbors[i].object.id)
-                  
-        } 
-        this.removeInactiveMath(this.active_indices, new_active_indices)
-        this.active_indices = new_active_indices
-
-      }
       this.renderer.render(this.scene, this.camera);
       this.renderer_css.render( this.scene_css, this.camera );
     }
@@ -347,7 +328,11 @@ export class Visualization {
     animate() {
       requestAnimationFrame(this.animate);
       this.render()
-      this.stats.update();
+
+      this.findIntersections()
+
+      this.stats.update()
       this.octree.update()
+      this.computeBoundingBox()
     }
 }
