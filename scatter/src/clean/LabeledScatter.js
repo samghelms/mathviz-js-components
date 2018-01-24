@@ -57,6 +57,9 @@ class LabeledScatter extends ZoomableScatter {
 		this.initOctree()	    
 
 		this.lastZ = this.camera.position.z
+
+    this.handleLabelsTransition()
+    console.log("updated")
     }
 
     initOctree() {
@@ -119,8 +122,6 @@ class LabeledScatter extends ZoomableScatter {
 		const w = this.getCurrentWidth()/2
 		const x = this.camera.position.x
         const y = this.camera.position.y
-        console.log(w)
-        console.log(x)
         console.log(y)
 
 		const allMatches = this.octree.search({x:x, y:y}, w)
@@ -128,7 +129,7 @@ class LabeledScatter extends ZoomableScatter {
 		const randomSubset = d3.shuffle(keys).slice(0,7)
 		console.log(randomSubset)
 		this.removeLabels(randomSubset)
-        this.populateLabels(randomSubset)
+    this.populateLabels(randomSubset)
 	}
 
     labelZoom() {
