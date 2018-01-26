@@ -8,12 +8,12 @@ import ZoomableScatter from './ZoomableScatter'
 import '../threeoctree.min.js'
 import '../CSS3DRenderer'
 
-const THREE = require(`three.min.js`) 
-const d3 = require(`d3.v4.min.js`)
+const THREE = require(`three.js`) 
+const d3 = require(`d3`)
 
 class LabeledScatter extends ZoomableScatter {
-	constructor(domEl, data, labelFormatter) {
-		super(domEl, data, false)
+	constructor(domEl, data, labelFormatter, settings = {}) {
+		super(domEl, data, settings)
 		this.labelFormatter = labelFormatter
 
 		this.octree = new THREE.Octree({radius: this.near, objectsThreshold: 1})
@@ -47,19 +47,18 @@ class LabeledScatter extends ZoomableScatter {
 
     initLabels() {
     	this.rendererCSS = new THREE.CSS3DRenderer()
-		this.rendererCSS.setSize(this.width, this.height)
-		this.rendererCSS.domElement.style.position = 'absolute'
-		this.rendererCSS.domElement.style.top = 0;
-		this.container.appendChild( this.rendererCSS.domElement )
+  		this.rendererCSS.setSize(this.width, this.height)
+  		this.rendererCSS.domElement.style.position = 'absolute'
+  		this.rendererCSS.domElement.style.top = 0;
+  		this.container.appendChild( this.rendererCSS.domElement )
 
-		this.sceneCSS = new THREE.Scene()
+  		this.sceneCSS = new THREE.Scene()
 
-		this.initOctree()	    
+  		this.initOctree()	    
 
-		this.lastZ = this.camera.position.z
+  		this.lastZ = this.camera.position.z
 
-    this.handleLabelsTransition()
-    console.log("updated")
+      this.handleLabelsTransition()
     }
 
     initOctree() {

@@ -1,9 +1,17 @@
 import Base from './Base'
 import sprite from '../data/sprites/disc.png';
-const THREE = require(`three.min.js`) 
+const THREE = require(`three.js`) 
+
+const defaultSettings = {
+  invariant: false,
+  backgroundColor: 0xffffff,
+  pointsColor: 0x000000 ,
+  pointsSize: 0.1
+}
+
 
 class BaseScatter extends Base {
-	constructor(domEl, data) {
+	constructor(domEl, data, settings = defaultSettings) {
 		super(domEl)
 		// console.log(data["1904"])
 		// 2d viz, this doesn't matter
@@ -23,8 +31,11 @@ class BaseScatter extends Base {
 		this.index2key = {}
 
 		// cosmetic
-		this.pointSize = 0.1
+		this.pointSize = settings.pointsSize
 		this.sprite = new THREE.TextureLoader().load(sprite)
+    this.invariant = settings.invariant
+    this.backgroundColor = settings.backgroundColor
+    this.pointsColor = settings.pointsColor
 
 		this.drawDataPoints = this.drawDataPoints.bind(this)
 		this.initBaseScatter = this.initBaseScatter.bind(this)
@@ -40,22 +51,24 @@ class BaseScatter extends Base {
     	this.camera.position.set(0, 0, this.far-1);
     	this.camera.lookAt(new THREE.Vector3(0,0,0));
 
-		this.scene = new THREE.Scene()
+  		this.scene = new THREE.Scene()
+      this.scene.background = new THREE.Color( this.backgroundColor );
 
-		// container so the scale is correct
-		var pointsContainer = new THREE.Object3D()
 
-		pointsContainer.scale.set( 1, 1, 1 )
+  		// container so the scale is correct
+  		var pointsContainer = new THREE.Object3D()
 
-		this.drawDataPoints(this.data, this.scene)
-		pointsContainer.add(this.points)
+  		pointsContainer.scale.set( 1, 1, 1 )
 
-		this.scene.add( pointsContainer )
+  		this.drawDataPoints(this.data, this.scene)
+  		pointsContainer.add(this.points)
 
-		this.renderer = new THREE.WebGLRenderer( { antialias: true } );
-		this.renderer.setSize( this.width, this.height );
-		// this.renderer.domElement.style.position = 'absolute'
-		this.container.appendChild( this.renderer.domElement );
+  		this.scene.add( pointsContainer )
+
+  		this.renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+  		this.renderer.setSize( this.width, this.height );
+  		// this.renderer.domElement.style.position = 'absolute'
+  		this.container.appendChild( this.renderer.domElement );
     }
 
     animate() {
@@ -95,7 +108,8 @@ class BaseScatter extends Base {
         var geometry = new THREE.BufferGeometry();
         geometry.addAttribute( 'position', new THREE.BufferAttribute( ptsNormalized, 3 ) );
         geometry.setIndex( new THREE.BufferAttribute( index, 1 ) );
-        this.pointsMaterial = new THREE.PointsMaterial( { size: this.pointSize, map: this.sprite, transparent: true } );
+        this.pointsMaterial = new THREE.PointsMaterial( { size: this.pointSize, map: this.sprite, 
+                                                        transparent: true, color:this.pointsColor } );
         
         this.points = new THREE.Points( geometry, this.pointsMaterial );
 

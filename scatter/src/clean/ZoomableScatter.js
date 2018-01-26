@@ -1,10 +1,11 @@
 import BaseScatter from './BaseScatter'
-const THREE = require(`three.min.js`) 
+const THREE = require(`three.js`) 
 // TODO: only use the required d3 zoom package
-const d3 = require(`d3.v4.min.js`)
+const d3 = require(`d3`)
+
 
 class ZoomableScatter extends BaseScatter {
-	constructor(domEl, data, invariant) {
+	constructor(domEl, data, settings = {}) {
 		super(domEl, data)
 
     this.mouse = new THREE.Vector2();
@@ -13,9 +14,6 @@ class ZoomableScatter extends BaseScatter {
     this.setupZoom = this.setupZoom.bind(this)
     this.getCurrentScale = this.getCurrentScale.bind(this)
     this.getPointScale = this.getPointScale.bind(this)
-
-    // controls whether points shrink on zoom
-    this.invariant = invariant
 
     this.initZoomableScatter = this.initZoomableScatter.bind(this)
 
